@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+
+var context = null;
+var video = null, canvas = null
+var ctx_capt = null
+
+function start() 
+{
+	canvas = document.createElement('canvas');
+	context = canvas.getContext('2d');
+	video = document.createElement("video");
+	ctx_capt = capture_canvas.getContext('2d')
+	
+	//extractFramesFromVideo("test_vid.mp4");
+}
+
+var frames = null
+var stop = false
+var total_frames = 0
+
+
+async function extractFramesFromVideo(videoUrl, fps=30) {
+
+    // fully download it first (no buffering):
+    let videoBlob = await fetch(videoUrl).then(r => r.blob());
+    let videoObjectUrl = URL.createObjectURL(videoBlob);
+
+    let seekResolve;
+    video.addEventListener('seeked', async function() {
+      if(seekResolve) seekResolve();
+    });
+
+    video.src = videoObjectUrl;
+
+    // workaround chromium metadata bug (https://stackoverflow.com/q/38062864/993683)
+    while((video.duration === Infinity || isNaN(video.duration)) && video.readyState < 2) {
+      await new Promise(r => setTimeout(r, 1000));
+      video.currentTime = 10000000*Math.random();
+    }
+    let duration = video.duration;
+	total_frames = Math.trunc(duration*fps)
+
+    let [w, h] = [video.videoWidth, video.videoHeight]
+    canvas.width =  w;
+    canvas.height = h;
+
+    frames = [];
+	let index = 0
+    let currentTime = 0;
+	stop = false
+
+    while (currentTime < duration && !stop) 
+	{
+		video.currentTime = currentTime;
+		await new Promise(r => seekResolve=r);
+
+		context.drawImage(video, 0, 0, w, h);
+		let base64ImageData = canvas.toDataURL();
+
+		let img = new Image()
+		img.src = base64ImageData
+		add_img(img)
+
+		++index
+		currentTime = index / fps;
+    }
+}
+
+function file_changed() {
+	let f = file_upload.files[0]
+	file_upload.value = null
+	let url = window.URL.createObjectURL(f)
+	
+	capt_arr.length = 0
+	capt_order.value = ""
+	make_capture()
+	
+	extractFramesFromVideo(url)
+}
+
+
+function stop_it() {
+	stop = true
+}
+
+
+function add_img(img) {
+	frames.push(img)
+	frame_slider.max = frames.length - 1
+	progress.innerHTML  = frames.length + "/" + total_frames
+	if (frames.length == 1)
+		set_to(0)
+}
+
+function set_to(index) {
+	if (img_holder.firstChild)
+		img_holder.removeChild(img_holder.firstChild)
+	img_holder.appendChild(frames[index])
+}
+
+function slider_move() {
+	let index = frame_slider.value
+	frame_num.value = index
+	set_to(index)
+}
+function num_change() {
+	let index = parseInt(frame_num.value)
+	frame_slider.value = index
+	set_to(index)
+}
+
+var capt_arr = []
+function capture_current() {
+	capt_arr.push(frame_slider.value)
+	capt_order.value = capt_arr.join(", ")
+	make_capture()
+}
+
+function capt_order_change() {
+	let sp = capt_order.value.split(',')
+	let arr = []
+	for(let n of sp) {
+		let ni = parseInt(n)
+		if (isNaN(ni))
+			continue
+		arr.push(ni)
+	}
+	capt_arr = arr
+	make_capture()
+}
+
+function make_capture() 
+{
+	if (frames === null || frames.length === 0) {
+		capture_canvas.width = 0
+		return
+	}
+	let w = frames[0].width, h = frames[0].height
+	let line_len = parseInt(line_size.value)
+	capture_canvas.width =  w * Math.min(capt_arr.length, line_len)
+	capture_canvas.height = h * (Math.trunc((capt_arr.length-1) / line_len) + 1)
+	let x = 0, y = 0
+	
+	for(let i in capt_arr) {
+		let index = capt_arr[i]
+		if (index < 0 || index >= frames.length)
+			continue
+		let img = frames[index]
+		ctx_capt.drawImage(img, x, y, w, h)
+		x += w
+		let ii = parseInt(i)
+		if (ii > 0 && ((ii+1) % 4) == 0) {
+			y += h
+			x = 0
+		}
+	}
+}
+
+function capt_download() {
+	let url = capture_canvas.toDataURL('image/jpeg') //'image/png')
+	dl_lnk.download = "name.jpg"
+	dl_lnk.href = url
+	dl_lnk.click()
+}
+
+</script>
+<style>
+#frame_slider {
+    width: 800px;
+}
+#img_holder {
+	zoom: 50%;
+	display: inline-block;
+	vertical-align: top;
+}
+#progress {
+    margin: 0 10px 0 10px;
+    font-family: monospace;
+	font-size: 16px;
+}
+#frame_num { 
+	width: 100px;
+}
+#capture_canvas {
+	zoom: 50%;
+}
+#imgs_area {
+	margin: 10px 0 0 0;
+	white-space: nowrap;
+}
+</style>
+</head>
+
+<body onload="start()">
+</body>
+
+<div>
+	<input id='file_upload' type='file' onchange='file_changed()'>
+	<span id="progress">0/0</span><button id="stop_but" onclick="stop_it()">Stop!</button>
+</div>
+<div id="controls">
+	<input id="frame_slider" type="range" min="0" max="1" value="0" class="slider" oninput="slider_move()">
+	<input id="frame_num" type="text" oninput="num_change()">
+</div>
+<div>
+	<button id="capt_but" onclick="capture_current()">Capture!</button>
+	<input id="capt_order" type="text" oninput="capt_order_change()">
+	<button id="dl_but" onclick="capt_download()">Download!</button><a id="dl_lnk">download_link</a>
+	Line of: <input id="line_size" type="text" value="4" oninput="make_capture()">
+</div>
+<div id="imgs_area">
+	<div id="img_holder"></div>
+	<canvas id="capture_canvas"></canvas>
+</div>
+
+</html>
