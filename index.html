@@ -20,10 +20,9 @@ function start()
 var frames = null
 var stop = false
 var total_frames = 0
-
+var lastUrl = null
 
 async function extractFramesFromVideo(videoUrl, fps=30) {
-
     // fully download it first (no buffering):
     let videoBlob = await fetch(videoUrl).then(r => r.blob());
     let videoObjectUrl = URL.createObjectURL(videoBlob);
@@ -71,6 +70,7 @@ async function extractFramesFromVideo(videoUrl, fps=30) {
 
 function file_changed() {
 	let f = file_upload.files[0]
+	lastUrl = f.name
 	file_upload.value = null
 	let url = window.URL.createObjectURL(f)
 	
@@ -160,8 +160,17 @@ function make_capture()
 }
 
 function capt_download() {
+	let filename = "name.jpg"
+	if (lastUrl !== null) {
+		filename = lastUrl
+		if (filename.endsWith(".mp4"))
+			filename = filename.substring(0, filename.length-4) + ".jpg"
+		else
+			filename += ".jpg"
+	}
+	
 	let url = capture_canvas.toDataURL('image/jpeg') //'image/png')
-	dl_lnk.download = "name.jpg"
+	dl_lnk.download = filename
 	dl_lnk.href = url
 	dl_lnk.click()
 }
